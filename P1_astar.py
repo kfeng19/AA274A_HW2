@@ -39,7 +39,12 @@ class AStar(object):
               useful here
         """
         ########## Code starts here ##########
-        
+        in_bound = np.all(np.array(x) > self.statespace_lo) and np.all(np.array(x) < self.statespace_hi)
+        if not in_bound:
+            return False
+        if not self.occupancy.is_free(x):
+            return False
+        return True
         ########## Code ends here ##########
 
     def distance(self, x1, x2):
@@ -54,7 +59,7 @@ class AStar(object):
         HINT: This should take one line. Tuples can be converted to numpy arrays using np.array().
         """
         ########## Code starts here ##########
-        
+        return np.linalg.norm(np.array(x1) - np.array(x2))
         ########## Code ends here ##########
 
     def snap_to_grid(self, x):
@@ -87,7 +92,11 @@ class AStar(object):
         """
         neighbors = []
         ########## Code starts here ##########
-        
+        for i in range(8):
+            theta = i * np.pi / 4
+            candidate = self.snap_to_grid(x + self.resolution * np.array([np.cos(theta), np.sin(theta)]))
+            if self.is_free(candidate):
+                neighbors.append(candidate)
         ########## Code ends here ##########
         return neighbors
 
@@ -152,7 +161,31 @@ class AStar(object):
                 set membership efficiently using the syntax "if item in set".
         """
         ########## Code starts here ##########
-        
+        while len(self.open_set) > 0:
+            min_cost_through = np.inf
+            x_current = None
+            for elem in self.open_set:
+                if self.est_cost_through[elem] < min_cost_through:
+                    min_cost_through = self.est_cost_through[elem]
+                    x_current = elem
+            # assert x_current is not None
+            if x_current == self.x_goal:
+                self.path = self.reconstruct_path()
+                return True
+            self.open_set.remove(x_current)
+            self.closed_set.add(x_current)
+            for x_neigh in self.get_neighbors(x_current):
+                if x_neigh in self.closed_set:
+                    continue
+                tent_cost_arrive = self.cost_to_arrive[x_current] + self.distance(x_current, x_neigh)
+                if x_neigh not in self.open_set:
+                    self.open_set.add(x_neigh)
+                elif tent_cost_arrive > self.cost_to_arrive[x_neigh]:
+                    continue
+                self.came_from[x_neigh] = x_current
+                self.cost_to_arrive[x_neigh] = tent_cost_arrive
+                self.est_cost_through[x_neigh] = tent_cost_arrive + self.distance(x_neigh, self.x_goal)
+        return False
         ########## Code ends here ##########
 
 class DetOccupancyGrid2D(object):
@@ -180,11 +213,28 @@ class DetOccupancyGrid2D(object):
     def plot(self, fig_num=0):
         """Plots the space and its obstacles"""
         fig = plt.figure(fig_num)
+        ax = fig.add_subplot(111, aspect='equal')
         for obs in self.obstacles:
-            ax = fig.add_subplot(111, aspect='equal')
             ax.add_patch(
             patches.Rectangle(
             obs[0],
             obs[1][0]-obs[0][0],
             obs[1][1]-obs[0][1],))
         ax.set(xlim=(0,self.width), ylim=(0,self.height))
+
+if __name__ == "__main__":
+    width = 10
+    height = 10
+    obstacles = [((6, 7), (8, 8)), ((2, 2), (4, 3)), ((2, 5), (4, 7)), ((6, 3), (8, 5))]
+    occupancy = DetOccupancyGrid2D(width, height, obstacles)
+    x_init = (1, 1)
+    x_goal = (9, 9)
+    astar = AStar((0, 0), (width, height), x_init, x_goal, occupancy)
+    if not astar.solve():
+        print("No path found")
+    else:
+        plt.rcParams['figure.figsize'] = [5, 5]
+        astar.plot_path()
+        plt.show()
+        astar.plot_tree()
+        plt.show()

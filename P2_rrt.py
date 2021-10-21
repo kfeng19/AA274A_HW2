@@ -92,7 +92,7 @@ class RRT(object):
 
         ## Intermediate Outputs
         # You must update and/or populate:
-        #    - V, P, n: the represention of the planning tree
+        #    - V, P, n: the representation of the planning tree
         #    - success: whether or not you've found a solution within max_iters RRT iterations
         #    - self.path: if success is True, then must contain list of states (tree nodes)
         #          [x_init, ..., x_goal] such that the global trajectory made by linking steering
@@ -105,7 +105,31 @@ class RRT(object):
         #   - the order in which you pass in arguments to steer_towards and is_free_motion is important
 
         ########## Code starts here ##########
-        
+        def get_random_state():
+            return np.random.rand(state_dim) * (self.statespace_hi - self.statespace_lo) + self.statespace_lo
+        def build_path():
+            inv_path = [self.x_goal]
+            ind_parent = P[n-1]
+            while ind_parent > -1:
+                inv_path.append(V[ind_parent])
+                ind_parent = P[ind_parent]
+            self.path = list(reversed(inv_path))
+
+        for k in range(max_iters):
+            z = np.random.rand()
+            x_rand = self.x_goal if z < goal_bias else get_random_state()
+            ind_near = self.find_nearest(V[:n, :], x_rand)
+            x_near = V[ind_near, :]
+            x_new = self.steer_towards(x_near, x_rand, eps)
+            if self.is_free_motion(self.obstacles, x_near, x_new):
+                V[n, :] = x_new
+                P[n] = ind_near
+                n += 1
+                if np.all(x_new == self.x_goal):
+                    build_path()
+                    print(f"{n} vertices in tree")
+                    success = True
+                    break
         ########## Code ends here ##########
 
         plt.figure()
@@ -143,7 +167,15 @@ class RRT(object):
             None, but should modify self.path
         """
         ########## Code starts here ##########
-        
+        success = False
+        while not success:
+            success = True
+            for i, x in enumerate(self.path):
+                if np.array_equal(x, self.x_init) or np.array_equal(x, self.x_goal):
+                    continue
+                if self.is_free_motion(self.obstacles, self.path[i-1], self.path[i+1]):
+                    self.path.pop(i)
+                    success = False
         ########## Code ends here ##########
 
 class GeometricRRT(RRT):
@@ -156,14 +188,14 @@ class GeometricRRT(RRT):
         # Consult function specification in parent (RRT) class.
         ########## Code starts here ##########
         # Hint: This should take one line.
-        
+        return np.argmin(np.linalg.norm(V - x, axis=1))
         ########## Code ends here ##########
 
     def steer_towards(self, x1, x2, eps):
         # Consult function specification in parent (RRT) class.
         ########## Code starts here ##########
         # Hint: This should take one line.
-        
+        return x2 if np.linalg.norm(x1 - x2) < eps else x1 + eps * (x2 - x1) / np.linalg.norm(x1 - x2)
         ########## Code ends here ##########
 
     def is_free_motion(self, obstacles, x1, x2):
@@ -254,3 +286,29 @@ class DubinsRRT(RRT):
             new_pts = d_path.sample_many(self.turning_radius*resolution)[0]
             pts.extend(new_pts)
         plt.plot([x for x, y, th in pts], [y for x, y, th in pts], **kwargs)
+
+if __name__ == "__main__":
+    MAZE = np.array([
+        ((5, 5), (-5, 5)),
+        ((-5, 5), (-5, -5)),
+        ((-5, -5), (5, -5)),
+        ((5, -5), (5, 5)),
+        ((-3, -3), (-3, -1)),
+        ((-3, -3), (-1, -3)),
+        ((3, 3), (3, 1)),
+        ((3, 3), (1, 3)),
+        ((1, -1), (3, -1)),
+        ((3, -1), (3, -3)),
+        ((-1, 1), (-3, 1)),
+        ((-3, 1), (-3, 3)),
+        ((-1, -1), (1, -3)),
+        ((-1, 5), (-1, 2)),
+        ((0, 0), (1, 1))
+    ])
+
+    # try changing these!
+    x_init = [-4, -4]  # reset to [-4,-4] when saving results for submission
+    x_goal = [4, 4]  # reset to [4,4] when saving results for submission
+
+    grrt = GeometricRRT([-5, -5], [5, 5], x_init, x_goal, MAZE)
+    grrt.solve(1.0, 2000)
