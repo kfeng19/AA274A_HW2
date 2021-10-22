@@ -39,7 +39,7 @@ class AStar(object):
               useful here
         """
         ########## Code starts here ##########
-        in_bound = np.all(np.array(x) > self.statespace_lo) and np.all(np.array(x) < self.statespace_hi)
+        in_bound = np.all(np.array(x) >= self.statespace_lo) and np.all(np.array(x) <= self.statespace_hi)
         if not in_bound:
             return False
         if not self.occupancy.is_free(x):

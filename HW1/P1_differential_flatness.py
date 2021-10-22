@@ -33,7 +33,24 @@ def compute_traj_coeffs(initial_state, final_state, tf):
     Hint: Use the np.linalg.solve function.
     """
     ########## Code starts here ##########
+    b = np.array([initial_state.x, initial_state.y, initial_state.xd, initial_state.yd, final_state.x, final_state.y,
+                  final_state.xd, final_state.yd])
+    A = np.zeros((8,8))
 
+    def get_psi(i):
+        def f(t):
+            return t**i
+        return f
+    psi = [get_psi(i) for i in range(4)]
+    A[0, 0] = 1
+    A[1, 4] = 1
+    A[2, 1] = 1
+    A[3, 5] = 1
+    A[4, :4] = [psi[i](tf) for i in range(4)]
+    A[5, 4:] = [psi[i](tf) for i in range(4)]
+    A[6, 1:4] = [(i + 1) * psi[i](tf) for i in range(3)]
+    A[7, 5:] = [(i + 1) * psi[i](tf) for i in range(3)]
+    coeffs = np.linalg.solve(A, b)
     ########## Code ends here ##########
     return coeffs
 
@@ -50,7 +67,23 @@ def compute_traj(coeffs, tf, N):
     t = np.linspace(0,tf,N) # generate evenly spaced points from 0 to tf
     traj = np.zeros((N,7))
     ########## Code starts here ##########
-    
+    def get_psi(i):
+        def f(t):
+            return t**i
+        return f
+    psi = [get_psi(i) for i in range(4)]
+    x_coef = coeffs[:4]
+    y_coef = coeffs[4:]
+    for i in range(4):
+        traj[:, 0] += x_coef[i] * psi[i](t)  # x(t)
+        traj[:, 1] += y_coef[i] * psi[i](t)  # y(t)
+        traj[:, 3] += i * psi[i - 1](t) * x_coef[i]  # xd(t)
+        traj[:, 4] += i * psi[i - 1](t) * y_coef[i]  # yd(t)
+    traj[:, 5] = 2 * x_coef[2] + 6 * x_coef[3] * t  # xdd(t)
+    traj[:, 6] = 2 * y_coef[2] + 6 * y_coef[3] * t  # ydd(t)
+    traj[:, 2] = np.arctan2(traj[:, 4], traj[:, 3])  # theta
+    # plt.plot(t, traj[:, :2])
+    # plt.show()
     ########## Code ends here ##########
 
     return t, traj
@@ -64,7 +97,22 @@ def compute_controls(traj):
         om (np.array shape [N]) om at each point of traj
     """
     ########## Code starts here ##########
-    
+    # V = np.linalg.norm(traj[:, 3:5], axis=1)
+    vth = traj[:, 2]
+    cos = np.cos(vth)
+    V = np.zeros(len(traj))
+    V[cos > 0.1] = traj[cos > 0.1, 3] / np.cos(vth[cos > 0.1])
+    V[V == 0] = traj[V == 0, 4] / np.sin(vth[V == 0])
+    n = traj.shape[0]
+    om = np.zeros(n)
+    th = traj[:, 2]
+    for i in range(n):
+        J = np.array([
+            [np.cos(th[i]), -V[i] * np.sin(th[i])],
+            [np.sin(th[i]), V[i] * np.cos(th[i])]
+        ])
+        sol = np.linalg.solve(J, traj[i, -2:])
+        om[i] = sol[1]
     ########## Code ends here ##########
 
     return V, om
@@ -81,8 +129,9 @@ def compute_arc_length(V, t):
 
     Hint: Use the function cumtrapz. This should take one line.
     """
+    s = None
     ########## Code starts here ##########
-    
+    s = cumtrapz(np.abs(V), t, initial=0)
     ########## Code ends here ##########
     return s
 
@@ -103,7 +152,10 @@ def rescale_V(V, om, V_max, om_max):
     Hint: This should only take one or two lines.
     """
     ########## Code starts here ##########
-    
+    # V_tilde = np.minimum(np.minimum(V, V_max), V * om_max / np.abs(om))
+    # print(np.min(np.abs(V)))
+    V_tilde = np.clip(V, np.maximum(-V_max, -om_max * np.abs(V / om)), np.minimum(V_max, om_max * np.abs(V / om)))
+    # print(np.min(np.abs(V_tilde)))
     ########## Code ends here ##########
     return V_tilde
 
@@ -120,7 +172,7 @@ def compute_tau(V_tilde, s):
     Hint: Use the function cumtrapz. This should take one line.
     """
     ########## Code starts here ##########
-    
+    tau = cumtrapz(1 / np.abs(V_tilde), s, initial=0)
     ########## Code ends here ##########
     return tau
 
@@ -137,7 +189,7 @@ def rescale_om(V, om, V_tilde):
     Hint: This should take one line.
     """
     ########## Code starts here ##########
-    
+    om_tilde = V_tilde * om / V
     ########## Code ends here ##########
     return om_tilde
 
@@ -233,7 +285,7 @@ if __name__ == "__main__":
     plt.figure(figsize=(15, 7))
     plt.subplot(2, 2, 1)
     plt.plot(traj[:,0], traj[:,1], 'k-',linewidth=2)
-    plt.grid('on')
+    plt.grid(True)
     plt.plot(s_0.x, s_0.y, 'go', markerfacecolor='green', markersize=15)
     plt.plot(s_f.x, s_f.y, 'ro', markerfacecolor='red', markersize=15)
     plt.xlabel('X [m]')
@@ -244,7 +296,7 @@ if __name__ == "__main__":
     ax = plt.subplot(2, 2, 2)
     plt.plot(t, V, linewidth=2)
     plt.plot(t, om, linewidth=2)
-    plt.grid('on')
+    plt.grid(True)
     plt.xlabel('Time [s]')
     plt.legend(['V [m/s]', '$\omega$ [rad/s]'], loc="best")
     plt.title('Original Control Input')
@@ -255,7 +307,7 @@ if __name__ == "__main__":
         plt.plot(t_new, V_scaled, linewidth=2)
         plt.plot(t_new, om_scaled, linewidth=2)
         plt.legend(['V [m/s]', '$\omega$ [rad/s]'], loc="best")
-        plt.grid('on')
+        plt.grid(True)
     else:
         plt.text(0.5,0.5,"[Problem iv not completed]", horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes)
     plt.xlabel('Time [s]')
@@ -273,7 +325,7 @@ if __name__ == "__main__":
         plt.legend(handles, labels, loc="best")
     else:
         plt.text(0.5,0.5,"[Problem iv not completed]", horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes)
-    plt.grid('on')
+    plt.grid(True)
     plt.xlabel('Time [s]')
     plt.ylabel('Arc-length [m]')
     plt.title('Original and scaled arc-length')

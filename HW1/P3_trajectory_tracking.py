@@ -58,8 +58,15 @@ class TrajectoryTracker:
         x_d, xd_d, xdd_d, y_d, yd_d, ydd_d = self.get_desired_state(t)
 
         ########## Code starts here ##########
-        V = 0
-        om = 0
+        self.V_prev = np.linalg.norm([xd_d, yd_d]) if self.V_prev < V_PREV_THRES else self.V_prev
+        # print(self.V_prev)
+        u1 = xdd_d + self.kpx * (x_d - x) + self.kdx * (xd_d - self.V_prev * np.cos(th))
+        u2 = ydd_d + self.kpy * (y_d - y) + self.kdy * (yd_d - self.V_prev * np.sin(th))
+        J = np.array([[np.cos(th), -self.V_prev * np.sin(th)],
+                      [np.sin(th), self.V_prev * np.cos(th)]])
+        sol = np.linalg.solve(J, np.array([u1, u2]))
+        V = self.V_prev + sol[0] * dt
+        om = sol[1]
         ########## Code ends here ##########
 
         # apply control limits
