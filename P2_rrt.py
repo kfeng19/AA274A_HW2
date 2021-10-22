@@ -235,7 +235,8 @@ class DubinsRRT(RRT):
         # HINT: The order of arguments for dubins.shortest_path() is important for DubinsRRT.
         import dubins
         ########## Code starts here ##########
-        
+        lengths = [dubins.shortest_path(p, x, self.turning_radius).path_length() for p in V]
+        return np.argmin(lengths)
         ########## Code ends here ##########
 
     def steer_towards(self, x1, x2, eps):
@@ -251,7 +252,17 @@ class DubinsRRT(RRT):
         """
         # HINT: You may find the functions dubins.shortest_path(), d_path.path_length(), and d_path.sample_many() useful
         ########## Code starts here ##########
-        
+        path_len = dubins.shortest_path(x1, x2, self.turning_radius).path_length()
+        if path_len < eps:
+            return x2
+        else:
+            step_size = path_len / 100
+            vq, vt = dubins.shortest_path(x1, x2, 1.001 * self.turning_radius).sample_many(step_size)
+            vq = np.array(vq)
+            vt = np.array(vt)
+            q_valid = vq[vt <= eps]
+            t_valid = vt[vt <= eps]
+            return q_valid[np.argmax(t_valid)]
         ########## Code ends here ##########
 
     def is_free_motion(self, obstacles, x1, x2, resolution = np.pi/6):
@@ -307,8 +318,13 @@ if __name__ == "__main__":
     ])
 
     # try changing these!
-    x_init = [-4, -4]  # reset to [-4,-4] when saving results for submission
-    x_goal = [4, 4]  # reset to [4,4] when saving results for submission
+    # x_init = [-4, -4]  # reset to [-4,-4] when saving results for submission
+    # x_goal = [4, 4]  # reset to [4,4] when saving results for submission
+    #
+    # grrt = GeometricRRT([-5, -5], [5, 5], x_init, x_goal, MAZE)
+    # grrt.solve(1.0, 2000)
+    x_init = [-4, -4, 0]
+    x_goal = [4, 4, np.pi / 2]
 
-    grrt = GeometricRRT([-5, -5], [5, 5], x_init, x_goal, MAZE)
-    grrt.solve(1.0, 2000)
+    drrt = DubinsRRT([-5, -5, 0], [5, 5, 2 * np.pi], x_init, x_goal, MAZE, .5)
+    drrt.solve(1.0, 1000, shortcut=True)
